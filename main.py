@@ -1,6 +1,7 @@
 from tkinter import *
 from Gui import Gui
 import numpy as np
+import time
 
 FPS = 60
 TIME = int(1000/FPS)
@@ -17,6 +18,7 @@ class Main:
         self.samples = []
         self.found = set()
         self.listona = []
+        self.alreadyResolved = set()
         
 
     def world(self):
@@ -35,7 +37,9 @@ class Main:
             self.check(self.table)
             self.gui.checkFlag = False
         if self.gui.solveFlag:
-            self.solve()
+            start = time.time()
+            self.DPLL(self.listona, self.found)
+            print("Time: ", time.time()-start)
             self.gui.solveFlag = False
         elif self.gui.modifiedValueFlag:
             ...
@@ -50,7 +54,7 @@ class Main:
     def preprocessing(self):
 
         '''inserisco tutti i sample del dataset in una lista'''
-        with open("sudoku_dataset.csv", "r") as file:
+        with open("new_difficult_sudoku.csv", "r") as file:
             for line in file:
                 self.samples.append(line)
         
@@ -65,12 +69,11 @@ class Main:
                 '''aggiungo ad i numeri trovati quelli già presenti nella tabella'''
                 if sample[0][i*9+j] != "0":
                     self.found.add("+"+str(i+1)+str(j+1)+str(int(sample[0][i*9+j])))
+                    self.listona.append(["+"+str(i+1)+str(j+1)+str(int(sample[0][i*9+j]))])
             self.table[i] = table
             self.solution[i] = solution
 
         self.gui.printTable(self.table)
-
-        self.listona = []
 
         # There is at least one number in each entry
         for x in range(1, 10):
@@ -141,47 +144,251 @@ class Main:
                             temp.append(str("+")+str(x+i*3)+str(y+j*3)+str(z))
             dnf.append(temp)
 
-        self.listona.extend(self.tseytin(dnf)) #fa side-effect su listona
-
-        '''let's filter the listona based on the value already present in the table'''
-        self.listona = list(filter(self.filterFn, self.listona))
+        self.listona.extend(self.tseytin(dnf)) #ritorna le clausole in cnf
+        
         '''trasformo la lista in set dopo aver trasformato le clausole in tuple'''
         self.listona = {tuple(clause) for clause in self.listona}
-
-        self.pureLiteralElimination() 
-            
-        self.unitPropagation()
-        
-                    
-
-    def solve(self):
-        for i in range(len(self.listona)):
-            if len(self.listona[i]) == 1:
-                print("Found unit clause: ", self.listona[i])
-        else:
-            print("No unit clause found")
-
-
-        
-    def filterFn(self, clause):
-        for i in range(len(clause)):
-            if clause[i][1:] in self.found:
-                return False
-            return True
-        
-    def unitPropagation(self):
-        to_discard = set()
-        for clause in self.listona:
+        for i, clause in enumerate(self.listona):
             if len(clause) == 1:
-                to_discard.add(clause)
+                pass
+                #print("Clause found: ", clause, " in position: ", i)
+        
+        lunghezze = set()
+        for clause in self.listona:
+            lunghezze.add(len(clause))
+
+    def DPLL(self, listona, interpretation):
+        copiaListona = listona.copy()
+        copiaFound = interpretation.copy()
+        
+        UPFlag, copiaListona, copiaFound = self.unitPropagation(copiaListona, copiaFound)
+        while UPFlag: #unitPropagation semplifica le clausole
+            UPFlag, copiaListona, copiaFound = self.unitPropagation(copiaListona, copiaFound)
+
+        '''termination test'''
+        if self.clausolaVuota(copiaListona):
+            return "UNSATISFIABLE"
+        if len(copiaListona) == 0:
+            return copiaFound  
+
+        '''splitting rule'''          
+        theChosenOne = list(copiaListona).copy()[0][0]
+        found1 = copiaFound.copy()
+        found1.add((theChosenOne,))
+        lista1Copia = copiaListona.copy()
+        lista1Copia.add((theChosenOne,))
+        firstDPLLRound = self.DPLL(lista1Copia, found1)
+        if firstDPLLRound != "UNSATISFIABLE":
+            return firstDPLLRound
+        found2 = copiaFound.copy()
+        found2.add((self.oppositeSign(theChosenOne),))
+        lista2Copia = copiaListona.copy()
+        lista2Copia.add((self.oppositeSign(theChosenOne),))
+        return self.DPLL(lista2Copia, found2)
+        
+
+
+    def oppositeSign(self, literal1):
+        if literal1[0] == "+":
+            return "-"+literal1[1:]
+        return "+"+literal1[1:]
+
+    def clausolaVuota(self, listona):
+        for clause in listona:
+            if len(clause) == 0:
+                return True
+        return False
+
+    def applyInference(self, clause1, clause2, literal):
+        clause3 = set()
+        for literal1 in clause1:
+            if literal1[1:] != literal[1:]:
+                clause3.add(literal1)
+        for literal2 in clause2:
+            if literal2[1:] != literal[1:]:
+                clause3.add(literal2)
+        return tuple(clause3,)
+
+    def solveWithInference(self):
+        '''divido le clausole in diverse zone in ordine di importanza (lunghezza):
+        d[1] = a
+        d[2] = (x, a)
+        d[3] = (x, y, a)
+        '''
+
+        d = {}
+        for i, clause in enumerate(self.listona):
+            if len(clause) not in d:
+                d[len(clause)] = []
+            d[len(clause)].append(clause)
+
+        '''quello che voglio fare è dare ad una funzione le combinazioni di clausole
+        che voglio in base alle loro lunghezze. Ad esempio, voglio dare tutte le clausole
+        di lunghezza binaria e fare inferenza tra loro. Oppure voglio dare le clausole binarie
+        assieme a quelle ternarie. L'obiettivo è di coprire le combinazioni che mi danno il prima
+        possibile un risultato che posso inserire nel sudoku.'''
+        for i in range(len(d.keys())):
+            for j in range(i, len(d.keys())):
+                if i == j:
+                    print(i, j)
+                    self.solveAux(d[list(d.keys())[i]], d[list(d.keys())[j]], (list(d.keys())[i], list(d.keys())[j]))
+
+    def solveAux(self, firstBlockList, secondBlockList, clauseDimensions):
+        '''firstDict == secondDict --> vengono fatte combinazioni all'interno dello stesso dizionario,
+        quindi combinazioni con clausole di lunghezza uguale.
+        Se firstDict != secondDictla allora voglio fare inferenza tra clausole di lunghezza diversa'''
+        if clauseDimensions[0] == clauseDimensions[1]:
+            d1 = {}
+            print("Sei dentro")
+            for clause in firstBlockList:
+                for literal in clause:
+                    literal_module = literal[1:]
+                    if literal_module not in d1:
+                        '''per ogni literal creo due insiemi:
+                        - uno per i literal positivi e uno per i negativi
+                        - gli insiemi contengono la clausola e il corrispondente literal 
+                            grazie al quale farò inferenza'''
+                        d1[literal_module] = [set(), set()]
+                    if literal[0] == "+":
+                        d1[literal_module][0].add(clause)
+                    else:
+                        d1[literal_module][1].add(clause)
+
+            '''se blockList è composta da clausole binarie cerco le clausole di grado 1 
+            ( (!x, a),(x, a) --> (a) )'''
+            if clauseDimensions[0] == 2:
+                newClauses = set()
+                for literal in d1:
+                    s1 = d1[literal][0]
+                    s2 = d1[literal][1]
+                    for first in s1:
+                        for second in s2:
+                            check = self.applyInference(first, second, str("-")+literal) # "-" is for padding
+                            if check not in self.alreadyResolved:
+                                self.alreadyResolved.add(check)
+                                '''è stato trovato un letterale'''
+                                if len(check) == 1:
+                                    print("Trovato il boss: ", first, second, check)
+                                    self.clauseFound(check)
+                                
+                                '''generiamo nuove clausole di grado 2'''
+                                newClauses.add(tuple(check))
+
+                self.listona = self.listona.union(newClauses) 
+        
+        else:   #ho a che fare con blocchi di clausole di lunghezze diverse 
+            #print("Sei entrato qui")
+            d1 = {}
+            d2  = {}
+            for clause in firstBlockList: #quelli da 2
+                for literal in clause:
+                    literal_module = literal[1:]
+                    if literal_module not in d1:
+                        '''per ogni literal creo due insiemi:
+                        - uno per i literal positivi e uno per i negativi
+                        - gli insiemi contengono la clausola 
+                        con la quale farò inferenza'''
+                        d1[literal_module] = [set(), set()]
+                    if literal[0] == "+":
+                        d1[literal_module][0].add(clause)
+                    else:
+                        d1[literal_module][1].add(clause)
+
+
+            for clause in secondBlockList: #quelli da 9
+                for literal in clause:
+                    literal_module = literal[1:]
+                    if literal_module not in d2:
+                        '''per ogni literal creo due insiemi:
+                        - uno per i literal positivi e uno per i negativi
+                        - gli insiemi contengono la clausola e il corrispondente literal 
+                            grazie al quale farò inferenza'''
+                        d2[literal_module] = [set(), set()]
+                    if literal[0] == "+":
+                        d2[literal_module][0].add(clause)
+                    else:
+                        d2[literal_module][1].add(clause)
+
+            '''adesso voglio fare inferenza tra quelli positivi del primo gruppo e negativi del secondo
+            e poi quelli negativi del primo e positivi del secondo gruppo. Ovviamente faccio inferenza sulle clausole
+            che hanno lo stesso literal.'''
+
+            newClauses = set()
+
+            for literal in d1: #literal == chiave del dizionario
+                s1 = d1[literal][0] #literal positivi di d1
+                if literal not in d2:
+                    continue
+                s2 = d2[literal][1] #literal negativi di d2
+                
+                for first in s1:
+                    for second in s2:
+                        check = self.applyInference(first, second, str("-")+literal) # "-" is for padding
+                        if check not in self.alreadyResolved:
+                            self.alreadyResolved.add(check)
+                            '''è stato trovato un letterale'''
+                            if len(check) == 1:
+                                print("Trovato il boss: ", first, second, check)
+                                self.clauseFound(check)
+                            
+                            '''generiamo nuove clausole di grado 2'''
+                            newClauses.add(tuple(check))
+
+                s1 = d1[literal][1] #literal positivi di d1
+                if literal not in d2:
+                    continue
+                s2 = d2[literal][0] #literal negativi di d2 
+                for first in s1:
+                    for second in s2:
+                        check = self.applyInference(first, second, str("-")+literal) # "-" is for padding
+                        if check not in self.alreadyResolved:
+                            self.alreadyResolved.add(check)
+                            '''è stato trovato un letterale'''
+                            if len(check) == 1:
+                                #print("Trovato il boss: ", first, second, check)
+                                self.clauseFound(check)
+                            
+                            '''generiamo nuove clausole di grado 2'''
+                            newClauses.add(tuple(check))
+
+            self.listona = self.listona.union(newClauses) 
+
+        
+    def unitPropagation(self, copiaListona, copiaFound):
+        '''trovo tutte le unit clause'''
+        literal_found = None
+        for clause in copiaListona:
+            if len(clause) == 1: 
+                literal_found = clause[0]
+                copiaFound.add(literal_found)
                 self.clauseFound(clause)
-        self.listona = self.listona - to_discard
+                break
+        
+        if literal_found == None:
+            return False, copiaListona, copiaFound
+        #print("Unit clause: ", literal_found)
+
+        temp = list(copiaListona.copy())
+        for clause in copiaListona:
+            for second_literal in clause:
+                if literal_found[1:] == second_literal[1:]:
+                    #print("paragonando primo e secondo literal: ", literal_found[0], second_literal[0])
+                    if second_literal[0] == literal_found[0]:
+                        '''il segno è concorde quindi elimino la clausola'''
+                        temp.remove(clause)
+                        break
+                    elif second_literal[0] != literal_found[0]:
+                        '''il segno è discorde quindi elimino il letterale dalla clausola'''
+                        newClause =  list(clause)
+                        newClause.remove(second_literal)
+                        temp[temp.index(clause)] = tuple(newClause)
+
+        return True, set(temp), copiaFound
+
                 
     def clauseFound(self, clause): #aggiorna self.table e notifica la gui di aggiornare la griglia
         '''le clausole sono nel formato [+-]xyz oppure [+-]p[0-9]'''
-        print("Clause found: ", clause[0])
-        self.found.add(clause[0])
-        if len(clause[0]) == 4: #se è una clausola xyz
+        if len(clause[0]) == 4 and clause[0][0] == "+": #se è una clausola xyz
             x = int(clause[0][1])
             y = int(clause[0][2])
             z = int(clause[0][3])
@@ -211,9 +418,9 @@ class Main:
         quindi quando vengono negati vengono messi automaticamente col segno meno 
         senza eseguire nessun controllo aggiuntivo'''
         cnf = []
-        dummyLiteralClause = []
+        #dummyLiteralClause = []
         for i in range(len(dnf)):
-            dummyLiteralClause.append("+p"+str(i)) #clausole dummy
+            #dummyLiteralClause.append("-p"+str(i)) #clausole dummy
             temp = dnf[i]
             for j in range(len(temp)):
                 cnf.append([temp[j], "-p"+str(i)])
@@ -221,7 +428,7 @@ class Main:
             temp.append("+p"+str(i))
             cnf.append(temp)
 
-        cnf.append(dummyLiteralClause)
+        #cnf.append(dummyLiteralClause)
 
         return cnf
         
@@ -229,7 +436,6 @@ class Main:
 
 
     def check(self, table):
-        print("Checking: ", table)
         array = np.array(table)
         array_t = array.transpose()
         '''ogni riga deve contenere un numero da 1 a 9 senza ripetizioni'''

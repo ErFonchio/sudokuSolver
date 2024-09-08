@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter.simpledialog import askstring
+from tkmacosx import Button
 
 PIXEL_SIZE = 30
 BACKGROUND_COLOR = "grey"
@@ -27,9 +28,9 @@ class Gui:
         self.values = table
         self.secondFrame = tk.Frame(self.root, width=self.width, height=self.secondFrameHeight, background=BACKGROUND_COLOR)
         self.secondFrame.pack()
-        self.checkButton = tk.Button(self.secondFrame, text="Check", command=self.checkFn)
+        self.checkButton = Button(self.secondFrame, text="Check", command=self.checkFn)
         self.checkButton.grid(row=0, column=0)
-        self.solveButton = tk.Button(self.secondFrame, text="Solve", command=self.solveFn)
+        self.solveButton = Button(self.secondFrame, text="Solve", command=self.solveFn)
         self.solveButton.grid(row=0, column=1)
     
     def clickLabel(self, event, x, y):
