@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter.simpledialog import askstring
 from tkmacosx import Button
 
-PIXEL_SIZE = 30
+PIXEL_SIZE = 45
 BACKGROUND_COLOR = "grey"
 LABEL_COLOR = "#f2cc8f"
 
@@ -17,13 +17,27 @@ class Gui:
         self.width = width
         self.height = height
         self.secondFrameHeight = 100
+
         self.mainframe = tk.Frame(self.root, width=self.width, height=self.height-self.secondFrameHeight, background=BACKGROUND_COLOR)
         self.mainframe.pack()
+
+        # Aggiungi un Canvas per disegnare le linee di separazione
+        self.canvas = tk.Canvas(self.mainframe, width=self.width, height=self.height-self.secondFrameHeight, background=BACKGROUND_COLOR, highlightthickness=0)
+        self.canvas.pack()
+
+        
         self.labelList = [[tk.Label(self.mainframe, text='0', background=LABEL_COLOR, ) for i in range(9)] for j in range(9)]
         for i in range(len(self.labelList)):
             for j in range(len(self.labelList[i])):
                 self.labelList[i][j].place(x=j*PIXEL_SIZE, y=i*PIXEL_SIZE, width=PIXEL_SIZE-2, height=PIXEL_SIZE-2)
                 self.labelList[i][j].bind("<Button-1>", lambda event, x=i, y=j: self.clickLabel(event, x, y))
+
+        # Disegna le linee di separazione per le sottogriglie 3x3
+        for i in range(1, 3):
+            # Linee verticali
+            self.canvas.create_line(i*3*PIXEL_SIZE, 0, i*3*PIXEL_SIZE, 9*PIXEL_SIZE, width=4, fill="red")
+            # Linee orizzontali
+            self.canvas.create_line(0, i*3*PIXEL_SIZE, 9*PIXEL_SIZE, i*3*PIXEL_SIZE, width=4, fill="red")
 
         self.values = table
         self.secondFrame = tk.Frame(self.root, width=self.width, height=self.secondFrameHeight, background=BACKGROUND_COLOR)
@@ -39,7 +53,7 @@ class Gui:
         if new_text is not None:
             event.widget.config(text=new_text)
             self.values[x][y] = int(new_text)
-            self.gui.modifiedValueFlag = True
+            self.modifiedValueFlag = True
  
     def checkFn(self):
         self.checkFlag = True

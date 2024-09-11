@@ -2,16 +2,18 @@ from tkinter import *
 from Gui import Gui
 import numpy as np
 import time
+import random
 
 FPS = 60
 TIME = int(1000/FPS)
-WIDTH = 270
-HEIGHT = 370 
+WIDTH = 405
+HEIGHT = 505
 
 class Main:
 
     def __init__(self):
         self.tk = Tk()
+        self.tk.title("Sudoku")
         self.table = [[0 for i in range(9)] for j in range(9)]
         self.solution = [[0 for i in range(9)] for j in range(9)]
         self.gui = Gui(self.tk, WIDTH, HEIGHT, self.table)
@@ -19,12 +21,13 @@ class Main:
         self.found = set()
         self.listona = []
         self.alreadyResolved = set()
+        self.flagInference = False
         
 
     def world(self):
         '''preprocessing'''
         self.preprocessing()
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                
         '''loop manager for computation and rendering'''
         self.manager_loop()
         
@@ -38,7 +41,7 @@ class Main:
             self.gui.checkFlag = False
         if self.gui.solveFlag:
             start = time.time()
-            self.DPLL(self.listona, self.found)
+            self.DPLL(self.listona, self.found, 3)
             print("Time: ", time.time()-start)
             self.gui.solveFlag = False
         elif self.gui.modifiedValueFlag:
@@ -59,7 +62,7 @@ class Main:
                 self.samples.append(line)
         
         '''inserisco l'esempio corrente e la soluzione in liste separate'''
-        sample = self.samples[1].split(",")
+        sample = self.samples[22].split(",")
         for i in range(9):
             table = []
             solution = []
@@ -133,8 +136,6 @@ class Main:
                 self.listona.append(temp)
 
         #Each number appears at least once in each 3x3 subgrid
-        '''la lista seguente deve essere convertita da dnf a cnf'''
-        dnf = []
         for z in range(1, 10):
             temp = []
             for i in range(0, 3):
@@ -142,25 +143,18 @@ class Main:
                     for x in range(1, 4):
                         for y in range(1, 4):
                             temp.append(str("+")+str(x+i*3)+str(y+j*3)+str(z))
-            dnf.append(temp)
-
-        self.listona.extend(self.tseytin(dnf)) #ritorna le clausole in cnf
+            self.listona.append(temp)
+        
+        random.shuffle(self.listona)
         
         '''trasformo la lista in set dopo aver trasformato le clausole in tuple'''
         self.listona = {tuple(clause) for clause in self.listona}
-        for i, clause in enumerate(self.listona):
-            if len(clause) == 1:
-                pass
-                #print("Clause found: ", clause, " in position: ", i)
-        
-        lunghezze = set()
-        for clause in self.listona:
-            lunghezze.add(len(clause))
 
-    def DPLL(self, listona, interpretation):
-        copiaListona = listona.copy()
-        copiaFound = interpretation.copy()
-        
+    def DPLL(self, copiaListona, copiaFound, count):
+
+        if len(self.alreadyResolved) < 50:
+            self.solveWithInference(copiaListona, copiaFound)
+        self.pureLiteralElimination()
         UPFlag, copiaListona, copiaFound = self.unitPropagation(copiaListona, copiaFound)
         while UPFlag: #unitPropagation semplifica le clausole
             UPFlag, copiaListona, copiaFound = self.unitPropagation(copiaListona, copiaFound)
@@ -177,14 +171,14 @@ class Main:
         found1.add((theChosenOne,))
         lista1Copia = copiaListona.copy()
         lista1Copia.add((theChosenOne,))
-        firstDPLLRound = self.DPLL(lista1Copia, found1)
+        firstDPLLRound = self.DPLL(lista1Copia, found1, count-1)
         if firstDPLLRound != "UNSATISFIABLE":
             return firstDPLLRound
         found2 = copiaFound.copy()
         found2.add((self.oppositeSign(theChosenOne),))
         lista2Copia = copiaListona.copy()
         lista2Copia.add((self.oppositeSign(theChosenOne),))
-        return self.DPLL(lista2Copia, found2)
+        return self.DPLL(lista2Copia, found2, count-1)
         
 
 
@@ -209,7 +203,7 @@ class Main:
                 clause3.add(literal2)
         return tuple(clause3,)
 
-    def solveWithInference(self):
+    def solveWithInference(self, copiaListona, copiaFound):
         '''divido le clausole in diverse zone in ordine di importanza (lunghezza):
         d[1] = a
         d[2] = (x, a)
@@ -217,29 +211,35 @@ class Main:
         '''
 
         d = {}
-        for i, clause in enumerate(self.listona):
+        for i, clause in enumerate(copiaListona):
             if len(clause) not in d:
                 d[len(clause)] = []
             d[len(clause)].append(clause)
+
+        if d[2] == None:
+            return
 
         '''quello che voglio fare è dare ad una funzione le combinazioni di clausole
         che voglio in base alle loro lunghezze. Ad esempio, voglio dare tutte le clausole
         di lunghezza binaria e fare inferenza tra loro. Oppure voglio dare le clausole binarie
         assieme a quelle ternarie. L'obiettivo è di coprire le combinazioni che mi danno il prima
         possibile un risultato che posso inserire nel sudoku.'''
-        for i in range(len(d.keys())):
-            for j in range(i, len(d.keys())):
-                if i == j:
-                    print(i, j)
-                    self.solveAux(d[list(d.keys())[i]], d[list(d.keys())[j]], (list(d.keys())[i], list(d.keys())[j]))
 
+        # for i in range(len(d.keys())):
+        #     for j in range(i, len(d.keys())):
+        #         '''per questa versione uso solo le clausole binarie'''
+        #         if i == j and list(d.keys())[i] == 2:
+        #             self.solveAux(d[list(d.keys())[i]], d[list(d.keys())[j]], (list(d.keys())[i], list(d.keys())[j]))
+
+        self.solveAux(d[2], d[2], (2, 2))
+    
+    
     def solveAux(self, firstBlockList, secondBlockList, clauseDimensions):
         '''firstDict == secondDict --> vengono fatte combinazioni all'interno dello stesso dizionario,
         quindi combinazioni con clausole di lunghezza uguale.
         Se firstDict != secondDictla allora voglio fare inferenza tra clausole di lunghezza diversa'''
         if clauseDimensions[0] == clauseDimensions[1]:
             d1 = {}
-            print("Sei dentro")
             for clause in firstBlockList:
                 for literal in clause:
                     literal_module = literal[1:]
@@ -263,12 +263,14 @@ class Main:
                     s2 = d1[literal][1]
                     for first in s1:
                         for second in s2:
+                            if len(self.alreadyResolved) > 50:
+                                self.listona.union(newClauses) 
+                                return
                             check = self.applyInference(first, second, str("-")+literal) # "-" is for padding
                             if check not in self.alreadyResolved:
                                 self.alreadyResolved.add(check)
                                 '''è stato trovato un letterale'''
                                 if len(check) == 1:
-                                    print("Trovato il boss: ", first, second, check)
                                     self.clauseFound(check)
                                 
                                 '''generiamo nuove clausole di grado 2'''
@@ -277,7 +279,6 @@ class Main:
                 self.listona = self.listona.union(newClauses) 
         
         else:   #ho a che fare con blocchi di clausole di lunghezze diverse 
-            #print("Sei entrato qui")
             d1 = {}
             d2  = {}
             for clause in firstBlockList: #quelli da 2
@@ -366,7 +367,6 @@ class Main:
         
         if literal_found == None:
             return False, copiaListona, copiaFound
-        #print("Unit clause: ", literal_found)
 
         temp = list(copiaListona.copy())
         for clause in copiaListona:
@@ -411,29 +411,8 @@ class Main:
         for key in dict:
             if len(dict[key]) == 1:
                 print("Found pure literal: ", key, dict[key])
-        
-
-    def tseytin(self, dnf):
-        '''NOTA BENE: in questo caso particolare i literal sono tutti positivi
-        quindi quando vengono negati vengono messi automaticamente col segno meno 
-        senza eseguire nessun controllo aggiuntivo'''
-        cnf = []
-        #dummyLiteralClause = []
-        for i in range(len(dnf)):
-            #dummyLiteralClause.append("-p"+str(i)) #clausole dummy
-            temp = dnf[i]
-            for j in range(len(temp)):
-                cnf.append([temp[j], "-p"+str(i)])
-                temp[j] = "-"+temp[j][1:] #nego le clausole
-            temp.append("+p"+str(i))
-            cnf.append(temp)
-
-        #cnf.append(dummyLiteralClause)
-
-        return cnf
-        
-            
-
+                self.listona.add(tuple(["+"+key]) if "+" in dict[key] else tuple(["-"+key]))
+                '''la unit propagation si occuperà del resto'''
 
     def check(self, table):
         array = np.array(table)
